@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traditional Node.js Server Grid Client</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                        },
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 sm:p-8 font-sans">
+
+    <div id="app" class="max-w-7xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-gray-900 mb-2">
+                <span class="text-red-500">Traditional Node.js</span> Grid Client
+            </h1>
+            <p class="text-gray-600">Connects to your running HTTP server at <code class="text-red-500">http://localhost:3000</code> for persistence via polling.</p>
+        </header>
+
+        <!-- Column Definition Area -->
+        <div id="column-setup" class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">1. Define Columns</h2>
+            <div class="flex flex-col sm:flex-row gap-4">
+                <input type="text" id="column-name-input" placeholder="Enter column name (e.g., Product ID, Price, Date)"
+                       class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 transition duration-150 shadow-sm"
+                       onkeydown="if(event.key === 'Enter') addColumn()">
+                <button onclick="addColumn()"
+                        class="px-6 py-3 bg-green-500 text-white font-medium rounded-lg shadow-md hover:bg-green-600 transition duration-150 ease-in-out transform hover:scale-[1.02] active:scale-[0.98]">
+                    Add Column & Open Form
+                </button>
+            </div>
+            
+            <!-- Display current columns -->
+            <div id="current-columns" class="mt-4 flex flex-wrap gap-2 min-h-[30px]">
+                <!-- Column tags will be rendered here -->
+            </div>
+            
+            <!-- Loading Indicator -->
+            <div id="loading-indicator" class="text-center p-4 text-primary-500">
+                Attempting to connect to server...
+            </div>
+        </div>
+
+        <!-- Data Display & Actions Area -->
+        <div id="data-display" class="bg-white p-6 rounded-xl shadow-lg">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">2. Data Records</h2>
+            
+            <div id="action-buttons" class="flex flex-col sm:flex-row gap-4 mb-6">
+                <!-- This button now opens the form if it was manually closed -->
+                <button onclick="openFormModal()" id="add-entry-btn" disabled
+                        class="px-6 py-3 bg-primary-500 text-white font-medium rounded-lg shadow-md hover:bg-primary-600 transition duration-150 ease-in-out transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex-1">
+                    Open Data Entry Form
+                </button>
+                <button onclick="downloadCSV()" id="download-btn" disabled
+                        class="px-6 py-3 bg-gray-700 text-white font-medium rounded-lg shadow-md hover:bg-gray-800 transition duration-150 ease-in-out transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex-1">
+                    Download CSV
+                </button>
+            </div>
+
+            <!-- Data Table Container -->
+            <div class="overflow-x-auto rounded-lg border border-gray-200">
+                <table id="data-table" class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-100 sticky top-0">
+                        <tr>
+                            <!-- Headers will be rendered here -->
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <!-- Rows will be rendered here -->
+                    </tbody>
+                </table>
+                <div id="no-columns-message" class="text-center p-8 text-gray-500">
+                    Define columns above to start adding data entries.
+                </div>
+            </div>
+        </div>
+        
+    </div>
+
+    <!-- Data Entry Modal (Hidden by default) -->
+    <div id="form-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center p-4 z-50 transition-opacity duration-300">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto transform scale-100 transition-transform duration-300"
+             onclick="event.stopPropagation()">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h3 class="text-xl font-bold text-gray-800">Continuous Data Entry</h3>
+                <button type="button" onclick="closeFormModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <form id="entry-form" class="p-6 space-y-4" onsubmit="event.preventDefault(); submitFormData();">
+                <!-- Instructions added here for clarity -->
+                <p class="text-sm text-gray-500 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    Enter the value for each column below. The entry is saved and the form resets automatically for continuous, fast input.
+                </p>
+
+                <div id="dynamic-fields-container" class="space-y-4">
+                    <!-- Form fields generated dynamically here -->
+                </div>
+            </form>
+            
+            <div class="p-6 border-t flex justify-between gap-3">
+                <button type="button" onclick="closeFormModal()"
+                        class="px-6 py-2 border border-red-300 text-red-700 font-medium rounded-lg hover:bg-red-50 transition duration-150">
+                    Close Form
+                </button>
+                <button type="submit" form="entry-form"
+                        class="px-6 py-2 bg-green-500 text-white font-medium rounded-lg shadow-md hover:bg-green-600 transition duration-150">
+                    Save Entry & Continue
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Globals ---
+        const API_BASE_URL = 'http://localhost:3000/api';
+        let columns = [];
+        let data = [];
+        let pollingInterval = null;
+
+        // --- Polling for Real-Time Effect ---
+
+        /**
+         * Starts the data polling loop to simulate real-time updates from the server.
+         */
+        function startPolling() {
+            if (pollingInterval) clearInterval(pollingInterval);
+            
+            // Poll every 1 second (1000ms)
+            pollingInterval = setInterval(fetchData, 1000); 
+            console.log("Polling started.");
+            
+            // Initial fetch
+            fetchData();
+        }
+
+        /**
+         * Fetches all data from the Node.js server API.
+         */
+        async function fetchData() {
+            const loadingIndicator = document.getElementById('loading-indicator');
+            loadingIndicator.textContent = "Connecting and fetching data...";
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/data`);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    
+                    // Update global state only if data has changed
+                    if (JSON.stringify(result.columns) !== JSON.stringify(columns) || 
+                        JSON.stringify(result.records) !== JSON.stringify(data)) {
+                        
+                        columns = result.columns || [];
+                        data = result.records || [];
+                        renderApp(true); // Re-render everything
+                        
+                        // Check if modal should be open (if it was previously opened but columns changed)
+                        if (columns.length > 0 && !document.getElementById('form-modal').classList.contains('hidden')) {
+                            openFormModal(false); // Re-render form fields, but don't force open/close behavior
+                        }
+                    }
+                    loadingIndicator.textContent = `Connected to server at ${API_BASE_URL}. Data updated.`;
+                    loadingIndicator.classList.remove('text-red-500');
+                    loadingIndicator.classList.add('text-green-500');
+
+                } else {
+                    throw new Error(`Server returned status ${response.status}`);
+                }
+            } catch (error) {
+                console.error("Fetch error:", error.message);
+                loadingIndicator.textContent = `Server connection failed. Run 'node server.js' and refresh.`;
+                loadingIndicator.classList.remove('text-green-500');
+                loadingIndicator.classList.add('text-red-500');
+            }
+        }
+        
+        // --- API Interaction Functions ---
+
+        /**
+         * Sends a request to update the columns array on the server.
+         * @param {string[]} newColumns - The new list of columns.
+         */
+        async function updateColumnsAPI(newColumns) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/columns`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ columns: newColumns })
+                });
+
+                if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+                
+                // The polling will pick up the change, but acknowledge it now
+                alertUser("Columns updated on server!", 'success');
+            } catch (error) {
+                console.error("Error updating columns:", error);
+                alertUser(`Failed to update columns: ${error.message}`, 'error');
+            }
+        }
+
+        /**
+         * Sends a request to add a new record to the server.
+         * @param {object} newRecord - The record object to add.
+         */
+        async function addRecordAPI(newRecord) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/records`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newRecord)
+                });
+                
+                if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+
+                alertUser(`Entry saved and synced! Ready for next.`, 'success');
+
+            } catch (error) {
+                console.error("Error adding record:", error);
+                alertUser(`Failed to add record: ${error.message}`, 'error');
+            }
+        }
+
+        /**
+         * Sends a request to delete a record by its index.
+         * @param {number} index - The index of the record to delete.
+         */
+        async function deleteRecordAPI(index) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/records/${index}`, {
+                    method: 'DELETE',
+                });
+                
+                if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+
+                alertUser(`Record deleted!`, 'success');
+
+            } catch (error) {
+                console.error("Error deleting record:", error);
+                alertUser(`Failed to delete record: ${error.message}`, 'error');
+            }
+        }
+
+
+        // --- UI Logic (Triggers API Calls) ---
+
+        /**
+         * Adds a new column to the schema and triggers an API update.
+         */
+        function addColumn() {
+            const input = document.getElementById('column-name-input');
+            const columnName = input.value.trim();
+
+            if (columnName && !columns.includes(columnName)) {
+                const newColumns = [...columns, columnName];
+                updateColumnsAPI(newColumns);
+                input.value = '';
+                
+                // Open form immediately after triggering the save
+                openFormModal();
+                
+            } else if (columnName) {
+                alertUser(`Column "${columnName}" already exists or is empty.`, 'warning');
+            }
+        }
+
+        /**
+         * Removes a column from the schema and triggers an API update.
+         * The server handles removing the corresponding data from records.
+         */
+        function removeColumn(columnName) {
+            const newColumns = columns.filter(col => col !== columnName);
+            updateColumnsAPI(newColumns);
+        }
+
+        /**
+         * Removes a row from the data table by index using the API.
+         */
+        function removeRow(rowIndex) {
+            deleteRecordAPI(rowIndex);
+        }
+
+        // --- Form Modal Functions ---
+
+        /**
+         * Opens/re-renders the data entry modal based on current columns.
+         * @param {boolean} shouldForceOpen - If true, ensures modal is visible.
+         */
+        function openFormModal(shouldForceOpen = true) {
+            if (columns.length === 0) {
+                alertUser("Please define at least one column first.", 'warning');
+                return;
+            }
+            
+            const modal = document.getElementById('form-modal');
+            const fieldsContainer = document.getElementById('dynamic-fields-container');
+            fieldsContainer.innerHTML = ''; // Clear previous fields
+
+            // Dynamically generate form fields
+            columns.forEach(col => {
+                const safeName = col.replace(/\s+/g, '_').toLowerCase();
+                const fieldHtml = `
+                    <div>
+                        <label for="input-${safeName}" class="block text-sm font-bold text-gray-700 mb-1">${col} <span class="text-gray-500 text-xs font-normal">(Value for this Column)</span></label>
+                        <input type="text" id="input-${safeName}" name="${safeName}" 
+                               class="block w-full p-3 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 transition duration-150 shadow-sm"
+                               placeholder="Enter value for ${col}">
+                    </div>
+                `;
+                fieldsContainer.innerHTML += fieldHtml;
+            });
+
+            if (shouldForceOpen) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                modal.addEventListener('click', closeFormModal);
+            }
+
+            // Focus on the first input regardless of forced open/close
+            document.querySelector('#entry-form input:not([type="hidden"])')?.focus();
+        }
+
+        /**
+         * Closes the data entry modal explicitly.
+         */
+        function closeFormModal(event) {
+            // Prevent closing if click originated from inside the modal content
+            if (event && event.target.closest('.bg-white')) return;
+
+            const modal = document.getElementById('form-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+            modal.removeEventListener('click', closeFormModal);
+            document.getElementById('entry-form').reset(); // Reset form fields on close
+            updateActionButtonsState(); 
+        }
+
+        /**
+         * Handles form submission, creates a new data row, and calls the API.
+         */
+        function submitFormData() {
+            const form = document.getElementById('entry-form');
+            const formData = new FormData(form);
+            const newRecord = {};
+
+            // Map form data back to the original column names
+            columns.forEach(col => {
+                const safeName = col.replace(/\s+/g, '_').toLowerCase();
+                newRecord[col] = formData.get(safeName) || '';
+            });
+
+            addRecordAPI(newRecord);
+            
+            form.reset(); // Reset form for next entry
+            document.querySelector('#entry-form input:not([type="hidden"])')?.focus(); // Re-focus for rapid entry
+        }
+
+        // --- CSV Export Logic ---
+
+        /**
+         * Converts the current data state into a CSV string and triggers a download.
+         */
+        function downloadCSV() {
+            if (data.length === 0 || columns.length === 0) {
+                alertUser("No data to export.", 'warning');
+                return;
+            }
+
+            // 1. Create the header row, escaping quotes
+            const header = columns.map(col => `"${col.replace(/"/g, '""')}"`).join(',');
+            
+            // 2. Create data rows, escaping quotes and wrapping values
+            const rows = data.map(row => {
+                return columns.map(col => {
+                    let value = row[col] !== undefined && row[col] !== null ? String(row[col]) : '';
+                    return `"${value.replace(/"/g, '""')}"`;
+                }).join(',');
+            });
+            
+            const csvContent = [header, ...rows].join('\n');
+            
+            // 3. Trigger download using Blob/URL
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            
+            // Generate a dynamic filename
+            const now = new Date();
+            const filename = `data_export_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}.csv`;
+            
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            alertUser("CSV download started!", 'success');
+        }
+
+        // --- Rendering Functions ---
+
+        /**
+         * Renders the column tags in the setup area.
+         */
+        function renderColumnTags() {
+            const container = document.getElementById('current-columns');
+            container.innerHTML = columns.map(col => `
+                <span class="inline-flex items-center px-3 py-1 text-sm font-medium bg-gray-100 text-gray-700 rounded-full border border-gray-300 shadow-sm">
+                    ${col}
+                    <button onclick="removeColumn('${col.replace(/'/g, "\\'")}')" class="ml-2 -mr-1 h-4 w-4 text-red-500 hover:text-red-700 transition duration-150 focus:outline-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </span>
+            `).join('');
+        }
+
+        /**
+         * Renders the main data table (headers and rows) for display.
+         */
+        function renderDataTable() {
+            const tableHead = document.querySelector('#data-table thead tr');
+            const tableBody = document.querySelector('#data-table tbody');
+            const noColumnsMsg = document.getElementById('no-columns-message');
+
+            tableHead.innerHTML = ''; 
+            tableBody.innerHTML = ''; 
+            
+            if (columns.length === 0) {
+                noColumnsMsg.classList.remove('hidden');
+                return;
+            }
+            noColumnsMsg.classList.add('hidden');
+
+            // --- Render Headers ---
+            tableHead.innerHTML += `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>`;
+            
+            columns.forEach(col => {
+                tableHead.innerHTML += `
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${col}</th>
+                `;
+            });
+            tableHead.innerHTML += `<th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>`;
+
+
+            // --- Render Rows ---
+            data.forEach((row, rowIndex) => {
+                let rowHtml = `<tr class="hover:bg-gray-50 transition duration-150">`;
+                
+                // Row Index Cell
+                rowHtml += `<td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-500">${rowIndex + 1}</td>`;
+
+                // Data Cells (Display only)
+                columns.forEach(col => {
+                    // Display the content, defaulting to a dash if empty
+                    const value = row[col] || '—'; 
+                    rowHtml += `
+                        <td class="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
+                            ${value}
+                        </td>
+                    `;
+                });
+                
+                // Row Action Cell (Delete Button)
+                rowHtml += `
+                    <td class="px-6 py-2 whitespace-nowrap text-center text-sm font-medium">
+                        <button onclick="removeRow(${rowIndex})"
+                                class="text-red-600 hover:text-red-900 transition duration-150 ease-in-out transform hover:scale-105"
+                                title="Delete Row">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.932a2.25 2.25 0 01-2.244-2.077L4.16 6.591m18.06-2.616c1.012-.016 2.016-.046 3.024.013.29.027.577.065.864.114.745.129 1.49-.356 1.49-1.112V2.75C21 2.336 20.664 2 20.25 2h-15a.75.75 0 00-.75.75v1.254c0 .756.745 1.242 1.49 1.112a2.43 2.43 0 00.864-.114L21 6" />
+                            </svg>
+                        </button>
+                    </td>
+                `;
+
+                rowHtml += `</tr>`;
+                tableBody.innerHTML += rowHtml;
+            });
+        }
+
+        /**
+         * Updates the disabled state of the action buttons.
+         */
+        function updateActionButtonsState() {
+            const hasColumns = columns.length > 0;
+            document.getElementById('add-entry-btn').disabled = !hasColumns;
+            
+            document.getElementById('download-btn').disabled = data.length === 0;
+        }
+
+        // --- Utility ---
+
+        /**
+         * Displays a temporary notification to the user.
+         */
+        function alertUser(message, type) {
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            
+            const alertBox = document.createElement('div');
+            const baseClasses = "fixed top-4 right-4 p-4 rounded-lg shadow-xl text-white transition-all duration-300 transform z-50";
+            let typeClasses;
+            if (type === 'success') {
+                typeClasses = 'bg-green-500';
+            } else if (type === 'warning') {
+                typeClasses = 'bg-yellow-500';
+            } else {
+                typeClasses = 'bg-red-600';
+            }
+            
+            alertBox.className = `${baseClasses} ${typeClasses} translate-y-0 opacity-100`;
+            alertBox.textContent = message;
+            
+            document.body.appendChild(alertBox);
+            
+            setTimeout(() => {
+                alertBox.classList.add('translate-y-full', 'opacity-0');
+                // Remove from DOM after transition
+                alertBox.addEventListener('transitionend', () => alertBox.remove());
+            }, 3000);
+        }
+
+        /**
+         * The main function to re-render all dynamic parts of the application.
+         * @param {boolean} shouldCheckModal - If true, re-opens the form modal if columns were added.
+         */
+        function renderApp(shouldCheckModal = false) {
+            renderColumnTags();
+            renderDataTable();
+            updateActionButtonsState();
+            
+            if (shouldCheckModal && columns.length > 0 && 
+                document.getElementById('form-modal').classList.contains('hidden')) {
+                // If data was fetched and columns exist, and modal is closed, open it.
+                openFormModal();
+            }
+        }
+
+        // --- Initialization ---
+        window.onload = startPolling; // Start checking for data as soon as the page loads
+    </script>
+</body>
+</html>
